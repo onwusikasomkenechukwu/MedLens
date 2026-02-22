@@ -7,3 +7,5 @@ Valid8 helps people understand medical documents in plain language and can surfa
 - Frontend: `src/` (React + Vite)
 - Backend: `backend/`
 - Prototype/ML: `MedLens BisonHacks (ML Section)/`
+
+Link to full project zip file:"https://drive.google.com/file/d/1GOXPEeE-oKtEAVsnJgqy6qz0BIp0fJFC/view?usp=sharing"
