@@ -16,6 +16,45 @@ export function DocumentProvider({ children }) {
   const [analysisResult, setAnalysisResult] = useState(null);
   const [drugInteractions, setDrugInteractions] = useState([]);
 
+  // Check initial local storage state
+  const [hasLastResult, setHasLastResult] = useState(() => {
+    return !!localStorage.getItem('medlens:lastResult');
+  });
+
+  const saveLastResult = (resultData, interactions) => {
+    try {
+      const payload = {
+        data: resultData,
+        interactions: interactions || [],
+        timestamp: Date.now()
+      };
+      localStorage.setItem('medlens:lastResult', JSON.stringify(payload));
+      setHasLastResult(true);
+    } catch (e) {
+      console.error('Failed to save to localStorage', e);
+    }
+  };
+
+  const loadLastResult = () => {
+    try {
+      const stored = localStorage.getItem('medlens:lastResult');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        setAnalysisResult(parsed.data);
+        setDrugInteractions(parsed.interactions);
+        return true;
+      }
+    } catch (e) {
+      console.error('Failed to parse from localStorage', e);
+    }
+    return false;
+  };
+
+  const clearLastResult = () => {
+    localStorage.removeItem('medlens:lastResult');
+    setHasLastResult(false);
+  };
+
   const clearAll = () => {
     setDocumentInput(null);
     setInputType(null);
@@ -30,6 +69,7 @@ export function DocumentProvider({ children }) {
       analysisResult, setAnalysisResult,
       drugInteractions, setDrugInteractions,
       clearAll,
+      hasLastResult, saveLastResult, loadLastResult, clearLastResult
     }}>
       {children}
     </DocumentContext.Provider>
