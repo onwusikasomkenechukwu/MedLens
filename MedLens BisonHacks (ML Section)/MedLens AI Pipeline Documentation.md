@@ -202,15 +202,15 @@ Every analysis returns this structure:
 ## Testing Results
 
 The pipeline was validated against:
-1. Simple discharge summary (1 diagnosis, 3 medications) — ✅ all fields extracted
-2. Complex discharge summary (4 diagnoses, 5 medications, procedures) — ✅ 5/5 meds, 4/4 diagnoses, medical abbreviations translated
-3. Non-medical text — ✅ correctly rejected
-4. OCR path with photographed document — ✅ 88% confidence, all data extracted
-5. Reading level comparison — ✅ output adapts across all 3 levels
-6. Multilingual output (Spanish, French) — ✅ content and UI headings translate
-7. Drug interaction summarization — ✅ raw FDA text condensed to plain-language warnings
-8. Voice input — ✅ speech-to-text feeds pipeline correctly
-9. Medication schedule — ✅ medications correctly organized by time of day
+1. Simple discharge summary (1 diagnosis, 3 medications) — all fields extracted
+2. Complex discharge summary (4 diagnoses, 5 medications, procedures) — 5/5 meds, 4/4 diagnoses, medical abbreviations translated
+3. Non-medical text — correctly rejected
+4. OCR path with photographed document — 88% confidence, all data extracted
+5. Reading level comparison — output adapts across all 3 levels
+6. Multilingual output (Spanish, French) — content and UI headings translate
+7. Drug interaction summarization — raw FDA text condensed to plain-language warnings
+8. Voice input — speech-to-text feeds pipeline correctly
+9. Medication schedule — medications correctly organized by time of day
 
 ## Community Impact
 
@@ -220,5 +220,6 @@ MedLens addresses a critical health equity gap in Washington, D.C.:
 - **Wards 7 and 8** in D.C. face the highest rates of chronic disease and lowest access to digital health resources
 - **Language barriers** affect 25% of D.C. households where English is not the primary language
 - **Medication non-adherence** costs the U.S. healthcare system $528 billion annually, often driven by patients not understanding their prescriptions
+
 
 MedLens makes medical documents accessible to everyone — regardless of reading level, language, or digital literacy.
