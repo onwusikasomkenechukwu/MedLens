@@ -1,4 +1,4 @@
-# Valid8
+# MedLens by Valid8
 
 Team Valid8's project for the 2026 Bison Hacks hackathon.
 
