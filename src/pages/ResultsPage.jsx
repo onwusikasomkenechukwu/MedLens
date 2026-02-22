@@ -2,18 +2,20 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Volume2, Download, AlertTriangle, CheckSquare, FileText, ChevronDown, Pill, Globe, Loader2 } from 'lucide-react';
+import Layout from '../components/Layout';
 import { useDocumentContext } from '../context/DocumentContext';
 import { analyzeMedicalDocument } from '../services/medlens-ai.js';
 import { useReactToPrint } from 'react-to-print';
 
 export default function ResultsPage() {
     const navigate = useNavigate();
-    const { analysisResult: data, setAnalysisResult, drugInteractions } = useDocumentContext();
+    const { analysisResult: data, setAnalysisResult, drugInteractions, saveLastResult } = useDocumentContext();
     const [activeTab, setActiveTab] = useState('summary');
     const [readingLevel, setReadingLevel] = useState('simple');
     const [language, setLanguage] = useState('English');
     const [isPlaying, setIsPlaying] = useState(false);
     const [translating, setTranslating] = useState(false);
+    const [playbackSpeed, setPlaybackSpeed] = useState(1);
 
     // UI translations for headings
     const uiText = {
@@ -29,10 +31,14 @@ export default function ResultsPage() {
     // Reference for the PDF print area
     const contentRef = useRef(null);
 
-    // Redirect if no data
+    // Redirect if no data, otherwise auto-save to localStorage
     useEffect(() => {
-        if (!data) navigate('/');
-    }, [data, navigate]);
+        if (!data) {
+            navigate('/');
+        } else {
+            saveLastResult(data, drugInteractions);
+        }
+    }, [data, drugInteractions, navigate, saveLastResult]);
 
     if (!data) return null;
 
@@ -64,16 +70,30 @@ export default function ResultsPage() {
         }
     };
 
-    const handleReadAloud = () => {
-        if (isPlaying) {
+    const activeUtteranceRef = useRef(null);
+
+    const playUtterance = (forceRestart = false) => {
+        if (isPlaying && !forceRestart) {
+            // Explicitly stopping
+            if (activeUtteranceRef.current) {
+                // Remove listeners so the cancel doesn't trigger onend and mess up state
+                activeUtteranceRef.current.onend = null;
+                activeUtteranceRef.current.onerror = null;
+            }
             window.speechSynthesis.cancel();
             setIsPlaying(false);
             return;
         }
 
+        // Before starting a new one, cleanly cancel any existing ones
+        if (activeUtteranceRef.current) {
+            activeUtteranceRef.current.onend = null;
+            activeUtteranceRef.current.onerror = null;
+        }
+        window.speechSynthesis.cancel();
+
         let textToRead = "";
         if (activeTab === 'summary') {
-            // summary is now an object with simple/standard/detailed keys
             textToRead = typeof data.summary === 'object' ? (data.summary[readingLevel] || data.summary.simple) : data.summary;
         } else if (activeTab === 'actions') {
             textToRead = "Your Next Steps. " + (data.action_items || []).map((item, i) => `${i + 1}: ${item}`).join(". ");
@@ -82,6 +102,7 @@ export default function ResultsPage() {
         }
 
         const utterance = new SpeechSynthesisUtterance(textToRead);
+        activeUtteranceRef.current = utterance; // Track it
 
         const voices = window.speechSynthesis.getVoices();
         const feminineVoice = voices.find(voice =>
@@ -100,12 +121,34 @@ export default function ResultsPage() {
         }
 
         utterance.pitch = 1.1;
-        utterance.rate = 0.9;
-        utterance.onend = () => setIsPlaying(false);
+        utterance.rate = playbackSpeed;
+
+        utterance.onend = () => {
+            setIsPlaying(false);
+            activeUtteranceRef.current = null;
+        };
+        utterance.onerror = (e) => {
+            console.error("Speech synthesis error", e);
+            setIsPlaying(false);
+            activeUtteranceRef.current = null;
+        };
 
         setIsPlaying(true);
-        window.speechSynthesis.speak(utterance);
+        // Slight timeout helps some browsers clear the cancel queue before speaking
+        setTimeout(() => {
+            window.speechSynthesis.speak(utterance);
+        }, 50);
     };
+
+    const handleReadAloud = () => playUtterance(false);
+
+    // Watch for speed changes specifically mid-playback
+    useEffect(() => {
+        if (isPlaying) {
+            playUtterance(true);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [playbackSpeed]);
 
     if (typeof window !== 'undefined' && window.speechSynthesis.onvoiceschanged !== undefined) {
         window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
@@ -117,127 +160,143 @@ export default function ResultsPage() {
     });
 
     return (
-        <div className="w-full pb-20">
-            {/* Header */}
-            <div className="flex items-center justify-between mb-4">
-                <button
-                    onClick={() => navigate('/')}
-                    className="p-3 -ml-3 text-gray-500 hover:text-gray-900 focus:outline-none focus:ring-4 focus:ring-brand-500 rounded-xl transition-colors min-w-[48px] min-h-[48px] flex items-center justify-center"
-                    aria-label="Go back"
-                    title="Go back to the previous page"
-                >
-                    <ArrowLeft size={24} />
-                </button>
-
-                <div className="flex gap-2">
+        <Layout>
+            <div className="w-full pb-20">
+                {/* Header */}
+                <div className="flex items-center justify-between mb-4">
                     <button
-                        onClick={handleReadAloud}
-                        className={`flex items-center justify-center gap-2 px-4 py-2 min-h-[48px] text-sm font-bold rounded-xl transition-colors focus:ring-4 focus:ring-brand-500/50 ${isPlaying ? 'bg-brand-600 text-white shadow-md' : 'text-brand-700 bg-brand-50 hover:bg-brand-100'}`}
-                        aria-label={isPlaying ? "Stop reading aloud" : "Read summary aloud"}
-                        aria-pressed={isPlaying}
-                        title={isPlaying ? "Stop reading" : "Listen to the summary"}
+                        onClick={() => navigate('/')}
+                        className="p-3 -ml-3 text-gray-500 hover:text-gray-900 focus:outline-none focus:ring-4 focus:ring-brand-500 rounded-xl transition-colors min-w-[48px] min-h-[48px] flex items-center justify-center"
+                        aria-label="Go back"
+                        title="Go back to the previous page"
                     >
-                        <Volume2 size={20} className={isPlaying ? "animate-pulse" : ""} />
-                        <span className="hidden sm:inline">{isPlaying ? t.stop : t.listen}</span>
+                        <ArrowLeft size={24} />
                     </button>
-                    <button
-                        className="flex items-center justify-center gap-2 px-4 py-2 min-h-[48px] text-sm font-bold text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors focus:ring-4 focus:ring-gray-500/50"
-                        aria-label="Download PDF"
-                        title="Download a PDF copy of this summary"
-                        onClick={handleDownloadPdf}
-                    >
-                        <Download size={20} />
-                    </button>
-                </div>
-            </div>
 
-            {/* OCR Warning */}
-            {data.ocrWarning && (
-                <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl flex gap-3 items-start">
-                    <AlertTriangle size={20} className="text-amber-500 mt-0.5 shrink-0" />
-                    <p className="text-amber-800 text-sm">{data.ocrWarning}</p>
-                </div>
-            )}
+                    <div className="flex flex-wrap justify-end gap-2">
+                        {/* Playback Speed Selector */}
+                        <div className="flex items-center bg-white border border-gray-200 rounded-xl p-1 shadow-sm h-[48px]" role="group" aria-label="Playback speed">
+                            {[0.75, 1, 1.25, 1.5].map((speed) => (
+                                <button
+                                    key={speed}
+                                    onClick={() => setPlaybackSpeed(speed)}
+                                    className={`px-2 sm:px-3 h-full text-xs font-bold rounded-lg transition-colors ${playbackSpeed === speed ? 'bg-brand-100 text-brand-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                                    aria-pressed={playbackSpeed === speed}
+                                >
+                                    {speed}x
+                                </button>
+                            ))}
+                        </div>
 
-            {/* Language selector */}
-            <div className="flex items-center gap-2 mb-6">
-                <Globe size={16} className="text-gray-400" />
-                <select
-                    value={language}
-                    onChange={handleLanguageChange}
-                    disabled={translating}
-                    className="appearance-none bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-lg focus:ring-4 focus:ring-brand-500/50 focus:border-brand-500 p-2 pr-8 min-h-[40px] disabled:opacity-50"
-                    aria-label="Select language"
-                >
-                    <option value="English">English</option>
-                    <option value="Spanish">Español</option>
-                    <option value="French">Français</option>
-                    <option value="Chinese">中文</option>
-                    <option value="Korean">한국어</option>
-                    <option value="Vietnamese">Tiếng Việt</option>
-                </select>
-                {translating && (
-                    <div className="flex items-center gap-2 text-sm text-brand-600">
-                        <Loader2 size={16} className="animate-spin" />
-                        <span>Translating...</span>
+                        <button
+                            onClick={handleReadAloud}
+                            className={`flex items-center justify-center gap-2 px-4 py-2 min-h-[48px] text-sm font-bold rounded-xl transition-colors focus:ring-4 focus:ring-brand-500/50 ${isPlaying ? 'bg-brand-600 text-white shadow-md' : 'text-brand-700 bg-brand-50 hover:bg-brand-100'}`}
+                            aria-label={isPlaying ? "Stop reading aloud" : "Read summary aloud"}
+                            aria-pressed={isPlaying}
+                            title={isPlaying ? "Stop reading" : "Listen to the summary"}
+                        >
+                            <Volume2 size={20} className={isPlaying ? "animate-pulse" : ""} />
+                            <span className="hidden sm:inline">{isPlaying ? t.stop : t.listen}</span>
+                        </button>
+                        <button
+                            className="flex items-center justify-center gap-2 px-4 py-2 min-h-[48px] text-sm font-bold text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors focus:ring-4 focus:ring-gray-500/50"
+                            aria-label="Download PDF"
+                            title="Download a PDF copy of this summary"
+                            onClick={handleDownloadPdf}
+                        >
+                            <Download size={20} />
+                        </button>
+                    </div>
+                </div>
+
+                {/* OCR Warning */}
+                {data.ocrWarning && (
+                    <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl flex gap-3 items-start">
+                        <AlertTriangle size={20} className="text-amber-500 mt-0.5 shrink-0" />
+                        <p className="text-amber-800 text-sm">{data.ocrWarning}</p>
                     </div>
                 )}
-            </div>
 
-            {/* Tabs */}
-            <div
-                ref={contentRef}
-                className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-6"
-                id="pdf-content-area"
-                style={{ "@media print": { margin: 0, border: 'none', boxShadow: 'none' } }}
-            >
-                <div className="flex border-b border-gray-200" role="tablist">
-                    {tabs.map((tab) => (
-                        <button
-                            key={tab.id}
-                            role="tab"
-                            aria-selected={activeTab === tab.id}
-                            aria-controls={`panel-${tab.id}`}
-                            onClick={() => setActiveTab(tab.id)}
-                            className={`flex-1 py-4 px-2 text-center text-sm font-medium transition-colors relative focus:outline-none min-h-[48px] ${activeTab === tab.id ? 'text-brand-600' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50'
-                                }`}
-                        >
-                            <div className="flex items-center justify-center gap-2">
-                                <tab.icon size={18} className={tab.id === 'alerts' && activeTab !== 'alerts' ? 'text-amber-500' : ''} />
-                                <span className="hidden xs:inline sm:inline">{tab.label}</span>
-                            </div>
-                            {activeTab === tab.id && (
-                                <motion.div
-                                    layoutId="activeTab"
-                                    className="absolute bottom-0 left-0 right-0 h-1 bg-brand-600 rounded-t-full"
-                                />
-                            )}
-                        </button>
-                    ))}
+                {/* Language selector */}
+                <div className="flex items-center gap-2 mb-6">
+                    <Globe size={16} className="text-gray-400" />
+                    <select
+                        value={language}
+                        onChange={handleLanguageChange}
+                        disabled={translating}
+                        className="appearance-none bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-lg focus:ring-4 focus:ring-brand-500/50 focus:border-brand-500 p-2 pr-8 min-h-[40px] disabled:opacity-50"
+                        aria-label="Select language"
+                    >
+                        <option value="English">English</option>
+                        <option value="Spanish">Español</option>
+                        <option value="French">Français</option>
+                        <option value="Chinese">中文</option>
+                        <option value="Korean">한국어</option>
+                        <option value="Vietnamese">Tiếng Việt</option>
+                    </select>
+                    {translating && (
+                        <div className="flex items-center gap-2 text-sm text-brand-600">
+                            <Loader2 size={16} className="animate-spin" />
+                            <span>Translating...</span>
+                        </div>
+                    )}
                 </div>
 
-                <div className="p-6">
-                    <AnimatePresence mode="wait">
-                        <motion.div
-                            key={activeTab}
-                            id={`panel-${activeTab}`}
-                            role="tabpanel"
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            transition={{ duration: 0.2 }}
-                        >
-                            {activeTab === 'summary' && (
-                                <SummaryTab data={data} readingLevel={readingLevel} onLevelChange={handleLevelChange} t={t} />
-                            )}
-                            {activeTab === 'schedule' && <ScheduleTab data={data} t={t} />}
-                            {activeTab === 'actions' && <ActionsTab data={data} t={t} />}
-                            {activeTab === 'alerts' && <AlertsTab data={data} drugInteractions={drugInteractions} t={t} />}
-                        </motion.div>
-                    </AnimatePresence>
+                {/* Tabs */}
+                <div
+                    ref={contentRef}
+                    className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-6"
+                    id="pdf-content-area"
+                    style={{ "@media print": { margin: 0, border: 'none', boxShadow: 'none' } }}
+                >
+                    <div className="flex border-b border-gray-200" role="tablist">
+                        {tabs.map((tab) => (
+                            <button
+                                key={tab.id}
+                                role="tab"
+                                aria-selected={activeTab === tab.id}
+                                aria-controls={`panel-${tab.id}`}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`flex-1 py-4 px-2 text-center text-sm font-medium transition-colors relative focus:outline-none min-h-[48px] ${activeTab === tab.id ? 'text-brand-600' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50'
+                                    }`}
+                            >
+                                <div className="flex items-center justify-center gap-2">
+                                    <tab.icon size={18} className={tab.id === 'alerts' && activeTab !== 'alerts' ? 'text-amber-500' : ''} />
+                                    <span className="hidden xs:inline sm:inline">{tab.label}</span>
+                                </div>
+                                {activeTab === tab.id && (
+                                    <motion.div
+                                        layoutId="activeTab"
+                                        className="absolute bottom-0 left-0 right-0 h-1 bg-brand-600 rounded-t-full"
+                                    />
+                                )}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="p-6">
+                        <AnimatePresence mode="wait">
+                            <motion.div
+                                key={activeTab}
+                                id={`panel-${activeTab}`}
+                                role="tabpanel"
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                                transition={{ duration: 0.2 }}
+                            >
+                                {activeTab === 'summary' && (
+                                    <SummaryTab data={data} readingLevel={readingLevel} onLevelChange={handleLevelChange} t={t} />
+                                )}
+                                {activeTab === 'schedule' && <ScheduleTab data={data} t={t} />}
+                                {activeTab === 'actions' && <ActionsTab data={data} t={t} />}
+                                {activeTab === 'alerts' && <AlertsTab data={data} drugInteractions={drugInteractions} t={t} />}
+                            </motion.div>
+                        </AnimatePresence>
+                    </div>
                 </div>
             </div>
-        </div>
+        </Layout>
     );
 }
 
@@ -302,7 +361,7 @@ function ActionsTab({ data, t }) {
 
             <ul className="space-y-3">
                 {data.action_items.map((item, i) => (
-                    <li key={i} className="flex gap-4 p-4 rounded-xl bg-gray-50 border border-gray-100 hover:border-gray-200 transition-colors">
+                    <li key={i} className="flex gap-4 p-4 rounded-xl bg-gray-50 border border-gray-100 hover:border-brand-300 hover-lift transition-colors cursor-pointer">
                         <div className="mt-1 flex items-center min-h-[24px]">
                             <input type="checkbox" className="w-6 h-6 rounded border-gray-300 text-brand-600 focus:ring-4 focus:ring-brand-500/50" aria-label={`Mark as done: ${item}`} />
                         </div>
@@ -316,7 +375,7 @@ function ActionsTab({ data, t }) {
                     <h4 className="font-bold text-gray-900 mb-3">{t.dates}</h4>
                     <div className="space-y-2">
                         {data.dates.map((dateObj, i) => (
-                            <div key={i} className="flex justify-between p-3 bg-white border border-gray-200 rounded-lg">
+                            <div key={i} className="flex justify-between p-3 bg-white border border-gray-200 rounded-lg hover-lift">
                                 <span className="font-medium text-gray-700">{dateObj.event}</span>
                                 <span className="text-brand-600 font-bold">{dateObj.date}</span>
                             </div>
@@ -341,7 +400,7 @@ function AlertsTab({ data, drugInteractions = [], t }) {
                         {t.drugAlerts}
                     </h4>
                     {drugInteractions.map((item, i) => (
-                        <div key={i} className="p-5 bg-red-50 border border-red-200 rounded-xl relative overflow-hidden">
+                        <div key={i} className="p-5 bg-red-50 border border-red-200 rounded-xl relative overflow-hidden hover-lift mb-2">
                             <div className="absolute top-0 left-0 w-2 h-full bg-red-500"></div>
                             <div className="flex gap-4 pl-2">
                                 <div>
@@ -357,7 +416,7 @@ function AlertsTab({ data, drugInteractions = [], t }) {
             {/* General Warnings */}
             {data.warnings && data.warnings.length > 0 ? (
                 data.warnings.map((warning, i) => (
-                    <div key={i} className="p-5 bg-amber-50 border border-amber-200 rounded-xl relative overflow-hidden mb-4">
+                    <div key={i} className="p-5 bg-amber-50 border border-amber-200 rounded-xl relative overflow-hidden mb-4 hover-lift">
                         <div className="absolute top-0 left-0 w-2 h-full bg-amber-500"></div>
                         <div className="flex gap-4">
                             <div className="text-amber-500 mt-1">
@@ -390,7 +449,7 @@ function AlertsTab({ data, drugInteractions = [], t }) {
                     </h4>
                     <div className="space-y-3">
                         {data.medications.map((med, i) => (
-                            <div key={i} className="p-4 bg-white border border-gray-200 rounded-xl">
+                            <div key={i} className="p-4 bg-white border border-gray-200 rounded-xl hover-lift">
                                 <div className="flex justify-between items-start mb-2">
                                     <h5 className="font-bold text-brand-700 text-lg">{med.name} {med.dosage}</h5>
                                 </div>
@@ -433,7 +492,7 @@ function ScheduleTab({ data, t }) {
                 {Object.entries(timeSlotLabels).map(([key, { label, emoji }]) => {
                     const meds = schedule[key] || [];
                     return (
-                        <div key={key} className="p-4 bg-white border border-gray-200 rounded-xl">
+                        <div key={key} className="p-4 bg-white border border-gray-200 rounded-xl hover-lift">
                             <div className="flex items-center gap-2 mb-3">
                                 <span className="text-xl">{emoji}</span>
                                 <h4 className="font-bold text-gray-900">{label}</h4>
