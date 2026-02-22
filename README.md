@@ -9,4 +9,5 @@ Valid8 helps people understand medical documents in plain language and can surfa
 - Prototype/ML: `MedLens BisonHacks (ML Section)/`
 
 Due to push constraints given the API keys, here's the link to full project zip file:
-https://drive.google.com/file/d/1MUMNVn_ci-st3uZzQbOG8u05dPtgsWGD/view?usp=sharing
+https://drive.google.com/file/d/1j4TcY3WtDyWWEKfnwWqJTp40CJqH-Atf/view?usp=sharing
+
