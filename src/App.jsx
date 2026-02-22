@@ -9,13 +9,11 @@ function App() {
   return (
     <DocumentProvider>
       <Router>
-        <Layout>
-          <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/processing" element={<ProcessingPage />} />
-            <Route path="/results" element={<ResultsPage />} />
-          </Routes>
-        </Layout>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/processing" element={<ProcessingPage />} />
+          <Route path="/results" element={<ResultsPage />} />
+        </Routes>
       </Router>
     </DocumentProvider>
   );
